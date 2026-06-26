@@ -42,6 +42,8 @@ Brightness / speed are `0.0`–`1.0` (defaults `1.0` / `0.5`).
 Wired into `~/.claude/settings.json`:
 
 - `UserPromptSubmit` → `wlrgb working`
+- `PostToolUse` → `wlrgb working` (re-asserts the working state after each tool, so a
+  transient `waiting` from a mid-turn permission prompt self-heals back to snake)
 - `Notification`, `PermissionRequest` → `wlrgb waiting`
 - `Stop`, `StopFailure` → `wlrgb normal`
 

@@ -12,6 +12,7 @@ use std::process::exit;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use hidapi::HidApi;
+use serde::Serialize;
 
 // --- Device / protocol constants (see PROTOCOL.md) ---
 const WL_VID: u16 = 0x303A; // 12346, Espressif
@@ -25,37 +26,43 @@ const MAX_CHUNK: usize = 61; // payload bytes per 64-byte report
 const WORKING_COLOR: u32 = 0xFF5500; // vivid Claude orange
 const WAITING_COLOR: u32 = 0xFFFFFF; // white
 
-/// One lighting segment's configuration.
+/// One lighting segment's configuration. Serializes to the JSON object the
+/// firmware expects, e.g.
+/// `{"effect":"snake","brightness":1,"speed":0.5,"magic":1,"color":16733952}`
+#[derive(Serialize, Clone)]
 struct LightConfig {
     effect: String,
+    #[serde(serialize_with = "serialize_unit")]
     brightness: f32,
+    #[serde(serialize_with = "serialize_unit")]
     speed: f32,
     magic: i32,
     color: u32,
 }
 
-impl LightConfig {
-    /// Serialize to the JSON object the firmware expects, e.g.
-    /// `{"effect":"snake","brightness":1,"speed":0.5,"magic":1,"color":16733952}`
-    fn to_json(&self) -> String {
-        format!(
-            "{{\"effect\":\"{}\",\"brightness\":{},\"speed\":{},\"magic\":{},\"color\":{}}}",
-            self.effect,
-            fmt_num(self.brightness),
-            fmt_num(self.speed),
-            self.magic,
-            self.color,
-        )
+/// Serialize a 0.0–1.0 value as a JSON integer when it's whole (e.g. `1` not
+/// `1.0`), matching the exact format the firmware was validated against.
+fn serialize_unit<S: serde::Serializer>(v: &f32, s: S) -> Result<S::Ok, S::Error> {
+    if v.fract() == 0.0 {
+        s.serialize_i64(*v as i64)
+    } else {
+        s.serialize_f32(*v)
     }
 }
 
-/// Format an f32 as a JSON number without a trailing ".0" (e.g. 1.0 -> "1").
-fn fmt_num(v: f32) -> String {
-    if v.fract() == 0.0 {
-        format!("{}", v as i64)
-    } else {
-        format!("{}", v)
-    }
+/// The `lights.preview` params: both lighting segments.
+#[derive(Serialize)]
+struct LightingPreview {
+    backlight: LightConfig,
+    underglow: LightConfig,
+}
+
+/// A JSON-RPC request. No `jsonrpc` version field — the firmware doesn't use one.
+#[derive(Serialize)]
+struct RpcRequest<T: Serialize> {
+    method: &'static str,
+    params: T,
+    id: u32,
 }
 
 fn print_usage() {
@@ -160,16 +167,15 @@ fn set_both(effect: &str, color: u32, brightness: f32, speed: f32) -> Result<(),
         magic: 1,
         color,
     };
-    let params = format!(
-        "{{\"backlight\":{},\"underglow\":{}}}",
-        cfg.to_json(),
-        cfg.to_json()
-    );
-    send_rpc("lights.preview", &params)
+    let preview = LightingPreview {
+        backlight: cfg.clone(),
+        underglow: cfg,
+    };
+    send_rpc("lights.preview", preview)
 }
 
 /// Open the keyboard's HID RPC interface and send a JSON-RPC call.
-fn send_rpc(method: &str, params_json: &str) -> Result<(), String> {
+fn send_rpc<T: Serialize>(method: &'static str, params: T) -> Result<(), String> {
     let api = HidApi::new().map_err(|e| format!("failed to init HID: {e}"))?;
     // macos-shared-device feature already opens non-exclusive; be explicit too.
     #[cfg(target_os = "macos")]
@@ -182,8 +188,13 @@ fn send_rpc(method: &str, params_json: &str) -> Result<(), String> {
         .open_path(&path)
         .map_err(|e| format!("failed to open device: {e}"))?;
 
-    let id = rpc_id();
-    let msg = format!(r#"{{"method":"{method}","params":{params_json},"id":{id}}}"#);
+    let request = RpcRequest {
+        method,
+        params,
+        id: rpc_id(),
+    };
+    let msg = serde_json::to_string(&request)
+        .map_err(|e| format!("failed to serialize request: {e}"))?;
     let bytes = msg.as_bytes();
 
     let mut offset = 0;

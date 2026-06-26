@@ -13,6 +13,8 @@ path = "src/main.rs"
 # macos-shared-device: open the keyboard non-exclusively so we can coexist with
 # the Work Louder input app (which also holds the HID device open).
 hidapi = { version = "2.6", default-features = false, features = ["macos-shared-device", "linux-static-hidraw"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 
 [profile.release]
 opt-level = "z"
