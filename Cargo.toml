@@ -1,0 +1,20 @@
+[package]
+name = "wlrgb"
+version = "0.1.0"
+edition = "2021"
+description = "Control the RGB lighting on a Work Louder Creator Micro v2 over HID"
+license = "MIT"
+
+[[bin]]
+name = "wlrgb"
+path = "src/main.rs"
+
+[dependencies]
+# macos-shared-device: open the keyboard non-exclusively so we can coexist with
+# the Work Louder input app (which also holds the HID device open).
+hidapi = { version = "2.6", default-features = false, features = ["macos-shared-device", "linux-static-hidraw"] }
+
+[profile.release]
+opt-level = "z"
+lto = true
+strip = true
