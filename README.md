@@ -44,8 +44,13 @@ Wired into `~/.claude/settings.json`:
 - `UserPromptSubmit` → `wlrgb working`
 - `PostToolUse` → `wlrgb working` (re-asserts the working state after each tool, so a
   transient `waiting` from a mid-turn permission prompt self-heals back to snake)
-- `Notification`, `PermissionRequest` → `wlrgb waiting`
+- `PermissionRequest` → `wlrgb waiting`
 - `Stop`, `StopFailure` → `wlrgb normal`
+
+> The `Notification` hook is deliberately **not** used for `waiting`: it fires both
+> when Claude needs input *and* after ~60s of idle at the prompt, so it would flip an
+> idle (rainbow) keyboard to breathing. `PermissionRequest` is the precise
+> "Claude needs a decision from you" signal.
 
 The hooks run `async` so they never add latency to a turn. After editing
 settings, open `/hooks` once or restart Claude Code so the new config loads.
